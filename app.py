@@ -161,3 +161,121 @@ def user_dashboard(username):
                 st.session_state.cart = []
                 st.success("Cart cleared!")
                 st.rerun()
+
+        else:
+            st.info("Your cart is empty.")
+
+    # -------------------------------------------------
+    # 3) CHECKOUT PAGE
+    # -------------------------------------------------
+    with tab3:
+        st.subheader("Checkout")
+
+        if st.session_state.cart:
+
+            total = sum(p["price"] * p["qty"] for p in st.session_state.cart)
+
+            st.markdown("### 🧾 Order Summary")
+            for p in st.session_state.cart:
+                st.write(f"- {p['name']} × {p['qty']} — ₹{p['price'] * p['qty']}")
+
+            st.markdown(f"### 💵 Total: ₹{total}")
+
+            if st.button("Place Order"):
+                orders_col.insert_one({
+                    "username": username,
+                    "items": st.session_state.cart,
+                    "total": total
+                })
+
+                st.session_state.cart = []
+                st.success("🎉 Order placed successfully!")
+
+        else:
+            st.info("Add items to your cart first!")
+
+
+# ---------------------------------------------------------
+# MAIN APP LOGIC
+# ---------------------------------------------------------
+def main():
+    st.set_page_config(page_title="Online Store", page_icon="🛍️", layout="centered")
+
+    # Initialize session state
+    if "page" not in st.session_state:
+        st.session_state.page = "home"
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+    if "role" not in st.session_state:
+        st.session_state.role = None
+    if "username" not in st.session_state:
+        st.session_state.username = ""
+
+    # Logout button
+    if st.session_state.logged_in:
+        if st.sidebar.button("🚪 Logout"):
+            st.session_state.logged_in = False
+            st.session_state.role = None
+            st.session_state.username = ""
+            st.session_state.page = "home"
+            st.rerun()
+
+    # HOME PAGE
+    if st.session_state.page == "home":
+        st.title("🏬 Online Store")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("👨‍💼 Login as Admin"):
+                st.session_state.page = "admin_login"
+                st.rerun()
+
+        with col2:
+            if st.button("🧑‍💻 Login as User"):
+                st.session_state.page = "user_login"
+                st.rerun()
+
+    # ADMIN LOGIN PAGE
+    elif st.session_state.page == "admin_login":
+        st.title("👨‍💼 Admin Login")
+
+        username = st.text_input("Admin Username")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Login"):
+            if username == st.secrets["admin"]["username"] and password == st.secrets["admin"]["password"]:
+                st.session_state.logged_in = True
+                st.session_state.role = "admin"
+                st.session_state.page = "dashboard"
+                st.rerun()
+            else:
+                st.error("Invalid admin credentials!")
+
+    # USER LOGIN PAGE
+    elif st.session_state.page == "user_login":
+        st.title("🧑‍💻 User Login")
+
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Login"):
+            role = login_user(username, password)
+            if role == "user":
+                st.session_state.logged_in = True
+                st.session_state.role = "user"
+                st.session_state.username = username
+                st.session_state.page = "dashboard"
+                st.rerun()
+            else:
+                st.error("Invalid user credentials!")
+
+    # DASHBOARDS
+    elif st.session_state.logged_in and st.session_state.page == "dashboard":
+        if st.session_state.role == "admin":
+            admin_dashboard()
+        else:
+            user_dashboard(st.session_state.username)
+
+
+if __name__ == "__main__":
+    main()
