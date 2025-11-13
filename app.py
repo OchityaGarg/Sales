@@ -39,7 +39,6 @@ def admin_dashboard():
     st.title("🛒 Admin Dashboard")
     tab1, tab2, tab3 = st.tabs(["👤 Create User", "📦 Add Product", "📋 View Data"])
 
-    # Create User
     with tab1:
         st.subheader("Create User")
         new_user = st.text_input("New Username", key="new_user")
@@ -51,7 +50,6 @@ def admin_dashboard():
                 users_col.insert_one({"username": new_user, "password": hash_password(new_pass)})
                 st.success("✅ User created successfully!")
 
-    # Add Product
     with tab2:
         st.subheader("Add Product")
         prod_name = st.text_input("Product Name", key="prod_name")
@@ -60,7 +58,6 @@ def admin_dashboard():
             products_col.insert_one({"name": prod_name, "price": prod_price})
             st.success("✅ Product added successfully!")
 
-    # View Data
     with tab3:
         st.subheader("Users")
         users = list(users_col.find({}, {"_id": 0, "password": 0}))
@@ -83,7 +80,7 @@ def user_dashboard(username):
     if "cart" not in st.session_state:
         st.session_state.cart = []
 
-    tab1, tab2, tab3 = st.tabs(["🛒 Browse Products", "🧺 View Cart", "✅ Place Order"])
+    tab1, tab2, tab3 = st.tabs(["🛒 Browse Products", "🧺 View Cart", "✅ Checkout"])
 
     # Browse Products
     with tab1:
@@ -113,7 +110,7 @@ def user_dashboard(username):
         else:
             st.info("Your cart is empty.")
 
-    # Place Order
+    # Checkout
     with tab3:
         st.subheader("Place Your Order")
         if st.session_state.cart:
@@ -130,11 +127,12 @@ def user_dashboard(username):
             st.info("Add items to cart first!")
 
 # ----------------------------
-# Main App Logic
+# Main Application
 # ----------------------------
 def main():
     st.set_page_config(page_title="Online Store", page_icon="🛍️", layout="centered")
 
+    # Initialize session state
     if "page" not in st.session_state:
         st.session_state.page = "home"
     if "logged_in" not in st.session_state:
@@ -153,22 +151,26 @@ def main():
             st.session_state.username = ""
             safe_rerun()
 
-    # Home Page
-    if st.session_state.page == "home":
+    # ----------------------------
+    # HOME PAGE
+    # ----------------------------
+    if st.session_state.page == "home" and not st.session_state.logged_in:
         st.title("🏬 Online Store")
-        st.write("Welcome! Please choose your role:")
+        st.write("Welcome! Please choose your role to continue.")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("👨‍💼 Login as Admin"):
                 st.session_state.page = "admin_login"
-                safe_rerun()
+                st.stop()  # stops execution to render new page
         with col2:
             if st.button("🧑‍💻 Login as User"):
                 st.session_state.page = "user_login"
-                safe_rerun()
+                st.stop()
 
-    # Admin Login Page
-    elif st.session_state.page == "admin_login":
+    # ----------------------------
+    # ADMIN LOGIN
+    # ----------------------------
+    elif st.session_state.page == "admin_login" and not st.session_state.logged_in:
         st.title("👨‍💼 Admin Login")
         username = st.text_input("Admin Username")
         password = st.text_input("Password", type="password")
@@ -176,12 +178,17 @@ def main():
             if username == st.secrets["admin"]["username"] and password == st.secrets["admin"]["password"]:
                 st.session_state.logged_in = True
                 st.session_state.role = "admin"
+                st.session_state.username = username
+                st.session_state.page = "dashboard"
+                st.success("✅ Login successful!")
                 safe_rerun()
             else:
                 st.error("Invalid admin credentials!")
 
-    # User Login Page
-    elif st.session_state.page == "user_login":
+    # ----------------------------
+    # USER LOGIN
+    # ----------------------------
+    elif st.session_state.page == "user_login" and not st.session_state.logged_in:
         st.title("🧑‍💻 User Login")
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -191,16 +198,22 @@ def main():
                 st.session_state.logged_in = True
                 st.session_state.role = "user"
                 st.session_state.username = username
+                st.session_state.page = "dashboard"
+                st.success("✅ Login successful!")
                 safe_rerun()
             else:
                 st.error("Invalid user credentials!")
 
-    # Dashboards
-    elif st.session_state.logged_in:
+    # ----------------------------
+    # DASHBOARDS
+    # ----------------------------
+    elif st.session_state.logged_in and st.session_state.page == "dashboard":
         if st.session_state.role == "admin":
             admin_dashboard()
         elif st.session_state.role == "user":
             user_dashboard(st.session_state.username)
+        else:
+            st.error("Role not recognized!")
 
 if __name__ == "__main__":
     main()
