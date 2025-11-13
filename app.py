@@ -67,16 +67,15 @@ def admin_dashboard():
     # VIEW ORDERS
     with tab3:
         st.subheader("All Orders")
-
         orders = list(orders_col.find({}, {"_id": 0}))
 
         if not orders:
             st.info("No orders found.")
         else:
-            for order in orders:
+            for i, order in enumerate(orders):
 
-                order_id = order.get("order_id", "N/A")
-                username = order.get("username", "N/A")
+                order_id = order.get("order_id", f"ID_AUTOFIX_{i}")
+                username = order.get("username", "Unknown")
                 total = order.get("total", 0)
 
                 with st.expander(f"📦 Order ID: {order_id} | User: {username} | Total: ₹{total}"):
@@ -107,11 +106,10 @@ def admin_dashboard():
 
                     st.write("---")
                     st.markdown(f"### 🧮 Grand Total: **₹{total}**")
-
                     st.write("---")
 
-                    # PDF DOWNLOAD BUTTON
-                    if st.button(f"Download Invoice PDF for {order_id}", key=f"pdf_{order_id}"):
+                    # FIXED UNIQUE KEY FOR PDF BUTTON
+                    if st.button("📄 Download Invoice PDF", key=f"pdf_button_{i}"):
 
                         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
                         c = canvas.Canvas(temp_file.name, pagesize=letter)
@@ -139,10 +137,11 @@ def admin_dashboard():
 
                         with open(temp_file.name, "rb") as f:
                             st.download_button(
-                                label="📄 Download Invoice",
+                                label="Download PDF",
                                 data=f,
                                 file_name=f"Invoice_{order_id}.pdf",
-                                mime="application/pdf"
+                                mime="application/pdf",
+                                key=f"download_btn_{i}"
                             )
 
 # ---------------------------------------------------------
@@ -283,7 +282,7 @@ def main():
     if "username" not in st.session_state:
         st.session_state.username = ""
 
-    # LOGOUT BUTTON
+    # LOGOUT
     if st.session_state.logged_in:
         if st.sidebar.button("🚪 Logout"):
             st.session_state.logged_in = False
@@ -292,7 +291,7 @@ def main():
             st.session_state.username = ""
             st.rerun()
 
-    # HOME PAGE
+    # HOME
     if st.session_state.page == "home":
         st.title("🏬 Online Store")
         col1, col2 = st.columns(2)
@@ -310,7 +309,6 @@ def main():
     # ADMIN LOGIN
     elif st.session_state.page == "admin_login":
         st.title("👨‍💼 Admin Login")
-
         username = st.text_input("Admin Username")
         password = st.text_input("Password", type="password")
 
@@ -326,13 +324,11 @@ def main():
     # USER LOGIN
     elif st.session_state.page == "user_login":
         st.title("🧑‍💻 User Login")
-
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
 
         if st.button("Login"):
             role = login_user(username, password)
-
             if role == "user":
                 st.session_state.logged_in = True
                 st.session_state.role = "user"
