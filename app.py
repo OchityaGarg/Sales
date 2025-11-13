@@ -1,6 +1,11 @@
 import streamlit as st
 from pymongo import MongoClient
 import hashlib
+from datetime import datetime
+import uuid
+import tempfile
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
 # ---------------------------------------------------------
 # MongoDB CONNECTION
@@ -18,7 +23,7 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def login_user(username, password):
-    """Check if user exists or if admin credentials match."""
+    """Authenticate user or admin."""
     if username == st.secrets["admin"]["username"] and password == st.secrets["admin"]["password"]:
         return "admin"
     user = users_col.find_one({"username": username, "password": hash_password(password)})
@@ -32,22 +37,22 @@ def login_user(username, password):
 def admin_dashboard():
     st.title("🛒 Admin Dashboard")
 
-    tab1, tab2, tab3 = st.tabs(["👤 Create User", "📦 Add Product", "📋 View Data"])
+    tab1, tab2, tab3 = st.tabs(["👤 Create User", "📦 Add Product", "📋 View Orders"])
 
-    # CREATE USER
+    # CREATE USER TAB
     with tab1:
-        st.subheader("Create User")
-        new_user = st.text_input("New Username", key="new_user")
-        new_pass = st.text_input("New Password", type="password", key="new_pass")
+        st.subheader("Create New User")
+        new_user = st.text_input("Username", key="new_user")
+        new_pass = st.text_input("Password", type="password", key="new_pass")
 
         if st.button("Create User"):
             if users_col.find_one({"username": new_user}):
-                st.warning("⚠️ User already exists!")
+                st.warning("⚠ User already exists!")
             else:
                 users_col.insert_one({"username": new_user, "password": hash_password(new_pass)})
                 st.success("✅ User created successfully!")
 
-    # ADD PRODUCT
+    # ADD PRODUCT TAB
     with tab2:
         st.subheader("Add Product")
         prod_name = st.text_input("Product Name", key="prod_name")
@@ -57,19 +62,80 @@ def admin_dashboard():
             products_col.insert_one({"name": prod_name, "price": prod_price})
             st.success("✅ Product added!")
 
-    # VIEW ALL DATA
+    # VIEW ORDERS TAB
     with tab3:
-        st.subheader("Users")
-        users = list(users_col.find({}, {"_id": 0, "password": 0}))
-        st.table(users or [{"info": "No users found"}])
+        st.subheader("All Orders")
 
-        st.subheader("Products")
-        prods = list(products_col.find({}, {"_id": 0}))
-        st.table(prods or [{"info": "No products found"}])
-
-        st.subheader("Orders")
         orders = list(orders_col.find({}, {"_id": 0}))
-        st.table(orders or [{"info": "No orders found"}])
+
+        if not orders:
+            st.info("No orders found.")
+        else:
+            for order in orders:
+
+                with st.expander(
+                    f"📦 Order ID: {order['order_id']} | User: {order['username']} | Total: ₹{order['total']}"
+                ):
+                    st.markdown("### 🧾 Order Details")
+                    st.write(f"**Order ID:** {order['order_id']}")
+                    st.write(f"**Username:** {order['username']}")
+                    st.write(f"**Date & Time:** {order['timestamp']}")
+                    st.write(f"**Total Amount:** ₹{order['total']}")
+
+                    st.write("---")
+                    st.markdown("### 📦 Items Purchased")
+
+                    # Table Header
+                    col1, col2, col3, col4 = st.columns([4, 2, 2, 2])
+                    col1.write("**Product**")
+                    col2.write("**Price**")
+                    col3.write("**Qty**")
+                    col4.write("**Subtotal**")
+
+                    # Line Items
+                    for item in order["items"]:
+                        col1, col2, col3, col4 = st.columns([4, 2, 2, 2])
+                        col1.write(item["name"])
+                        col2.write(f"₹{item['price']}")
+                        col3.write(item["qty"])
+                        col4.write(f"₹{item['price'] * item['qty']}")
+
+                    st.write("---")
+                    st.markdown(f"### 🧮 Grand Total: **₹{order['total']}**")
+
+                    st.write("---")
+
+                    # INVOICE PDF BUTTON
+                    if st.button(f"Download Invoice PDF for {order['order_id']}", key=f"pdf_{order['order_id']}"):
+                        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                        c = canvas.Canvas(temp_file.name, pagesize=letter)
+
+                        # Title
+                        c.setFont("Helvetica-Bold", 20)
+                        c.drawString(50, 750, "Invoice")
+
+                        c.setFont("Helvetica", 12)
+                        c.drawString(50, 720, f"Order ID: {order['order_id']}")
+                        c.drawString(50, 700, f"Username: {order['username']}")
+                        c.drawString(50, 680, f"Date: {order['timestamp']}")
+
+                        c.drawString(50, 650, "Items:")
+
+                        y = 630
+                        for item in order["items"]:
+                            c.drawString(60, y, f"{item['name']} (x{item['qty']}) — ₹{item['price'] * item['qty']}")
+                            y -= 20
+
+                        c.drawString(50, y - 20, f"Total: ₹{order['total']}")
+                        c.save()
+
+                        with open(temp_file.name, "rb") as f:
+                            st.download_button(
+                                label="📄 Download Invoice",
+                                data=f,
+                                file_name=f"Invoice_{order['order_id']}.pdf",
+                                mime="application/pdf"
+                            )
 
 
 # ---------------------------------------------------------
@@ -78,19 +144,18 @@ def admin_dashboard():
 def user_dashboard(username):
     st.title(f"🛍️ Welcome, {username}")
 
-    # Initialize cart
     if "cart" not in st.session_state:
         st.session_state.cart = []
 
     tab1, tab2, tab3 = st.tabs(["🛒 Browse Products", "🧺 View Cart", "✅ Checkout"])
 
-    # -------------------------------------------------
-    # 1) BROWSE PRODUCTS
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # SHOP TAB
+    # -----------------------------------------------------
     with tab1:
         st.subheader("Available Products")
-        products = list(products_col.find({}, {"_id": 0}))
 
+        products = list(products_col.find({}, {"_id": 0}))
         if not products:
             st.info("No products available.")
         else:
@@ -105,17 +170,16 @@ def user_dashboard(username):
                         st.session_state.cart.append({"name": p["name"], "price": p["price"], "qty": 1})
                         st.success(f"Added {p['name']}!")
 
-    # -------------------------------------------------
-    # 2) EDITABLE CART
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # CART TAB (FULLY EDITABLE)
+    # -----------------------------------------------------
     with tab2:
-        st.subheader("🧺 Your Cart (Editable)")
+        st.subheader("🧺 Your Cart")
 
         if st.session_state.cart:
 
             updated_cart = []
 
-            # Cart Table Header
             col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 3, 2])
             col1.write("**Product**")
             col2.write("**Price**")
@@ -128,7 +192,7 @@ def user_dashboard(username):
                 col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 3, 2])
 
                 with col1:
-                    st.write(f"**{item['name']}**")
+                    st.write(f"{item['name']}")
 
                 with col2:
                     st.write(f"₹{item['price']}")
@@ -146,7 +210,7 @@ def user_dashboard(username):
                     item["qty"] = new_qty
 
                 with col5:
-                    if st.button("🗑️", key=f"del_{i}"):
+                    if st.button("🗑️", key=f"delete_{i}"):
                         item["qty"] = 0
 
                 if item["qty"] > 0:
@@ -165,9 +229,9 @@ def user_dashboard(username):
         else:
             st.info("Your cart is empty.")
 
-    # -------------------------------------------------
-    # 3) CHECKOUT PAGE
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # CHECKOUT TAB
+    # -----------------------------------------------------
     with tab3:
         st.subheader("Checkout")
 
@@ -182,8 +246,11 @@ def user_dashboard(username):
             st.markdown(f"### 💵 Total: ₹{total}")
 
             if st.button("Place Order"):
+
                 orders_col.insert_one({
+                    "order_id": str(uuid.uuid4())[:8],
                     "username": username,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "items": st.session_state.cart,
                     "total": total
                 })
@@ -192,7 +259,7 @@ def user_dashboard(username):
                 st.success("🎉 Order placed successfully!")
 
         else:
-            st.info("Add items to your cart first!")
+            st.info("Your cart is empty.")
 
 
 # ---------------------------------------------------------
@@ -201,7 +268,6 @@ def user_dashboard(username):
 def main():
     st.set_page_config(page_title="Online Store", page_icon="🛍️", layout="centered")
 
-    # Initialize session state
     if "page" not in st.session_state:
         st.session_state.page = "home"
     if "logged_in" not in st.session_state:
@@ -211,16 +277,18 @@ def main():
     if "username" not in st.session_state:
         st.session_state.username = ""
 
-    # Logout button
+    # LOGOUT BUTTON
     if st.session_state.logged_in:
         if st.sidebar.button("🚪 Logout"):
             st.session_state.logged_in = False
             st.session_state.role = None
-            st.session_state.username = ""
             st.session_state.page = "home"
+            st.session_state.username = ""
             st.rerun()
 
+    # -------------------------------
     # HOME PAGE
+    # -------------------------------
     if st.session_state.page == "home":
         st.title("🏬 Online Store")
         col1, col2 = st.columns(2)
@@ -235,7 +303,9 @@ def main():
                 st.session_state.page = "user_login"
                 st.rerun()
 
-    # ADMIN LOGIN PAGE
+    # -------------------------------
+    # ADMIN LOGIN
+    # -------------------------------
     elif st.session_state.page == "admin_login":
         st.title("👨‍💼 Admin Login")
 
@@ -251,7 +321,9 @@ def main():
             else:
                 st.error("Invalid admin credentials!")
 
-    # USER LOGIN PAGE
+    # -------------------------------
+    # USER LOGIN
+    # -------------------------------
     elif st.session_state.page == "user_login":
         st.title("🧑‍💻 User Login")
 
@@ -260,6 +332,7 @@ def main():
 
         if st.button("Login"):
             role = login_user(username, password)
+
             if role == "user":
                 st.session_state.logged_in = True
                 st.session_state.role = "user"
@@ -269,7 +342,9 @@ def main():
             else:
                 st.error("Invalid user credentials!")
 
-    # DASHBOARDS
+    # -------------------------------
+    # DASHBOARD ROUTER
+    # -------------------------------
     elif st.session_state.logged_in and st.session_state.page == "dashboard":
         if st.session_state.role == "admin":
             admin_dashboard()
