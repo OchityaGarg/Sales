@@ -8,7 +8,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
 # ---------------------------------------------------------
-# MongoDB CONNECTION
+# MONGODB CONNECTION
 # ---------------------------------------------------------
 client = MongoClient(st.secrets["mongodb"]["uri"])
 db = client[st.secrets["mongodb"]["database"]]
@@ -23,12 +23,14 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def login_user(username, password):
-    """Authenticate user or admin."""
+    """Authenticate User or Admin."""
     if username == st.secrets["admin"]["username"] and password == st.secrets["admin"]["password"]:
         return "admin"
+
     user = users_col.find_one({"username": username, "password": hash_password(password)})
     if user:
         return "user"
+
     return None
 
 # ---------------------------------------------------------
@@ -39,7 +41,7 @@ def admin_dashboard():
 
     tab1, tab2, tab3 = st.tabs(["👤 Create User", "📦 Add Product", "📋 View Orders"])
 
-    # CREATE USER TAB
+    # CREATE USER
     with tab1:
         st.subheader("Create New User")
         new_user = st.text_input("Username", key="new_user")
@@ -52,7 +54,7 @@ def admin_dashboard():
                 users_col.insert_one({"username": new_user, "password": hash_password(new_pass)})
                 st.success("✅ User created successfully!")
 
-    # ADD PRODUCT TAB
+    # ADD PRODUCT
     with tab2:
         st.subheader("Add Product")
         prod_name = st.text_input("Product Name", key="prod_name")
@@ -62,7 +64,7 @@ def admin_dashboard():
             products_col.insert_one({"name": prod_name, "price": prod_price})
             st.success("✅ Product added!")
 
-    # VIEW ORDERS TAB
+    # VIEW ORDERS
     with tab3:
         st.subheader("All Orders")
 
@@ -73,70 +75,75 @@ def admin_dashboard():
         else:
             for order in orders:
 
-                with st.expander(
-                    f"📦 Order ID: {order['order_id']} | User: {order['username']} | Total: ₹{order['total']}"
-                ):
+                order_id = order.get("order_id", "N/A")
+                username = order.get("username", "N/A")
+                total = order.get("total", 0)
+
+                with st.expander(f"📦 Order ID: {order_id} | User: {username} | Total: ₹{total}"):
+
                     st.markdown("### 🧾 Order Details")
-                    st.write(f"**Order ID:** {order['order_id']}")
-                    st.write(f"**Username:** {order['username']}")
-                    st.write(f"**Date & Time:** {order['timestamp']}")
-                    st.write(f"**Total Amount:** ₹{order['total']}")
+                    st.write(f"**Order ID:** {order_id}")
+                    st.write(f"**Username:** {username}")
+                    st.write(f"**Date & Time:** {order.get('timestamp', 'Not recorded')}")
+                    st.write(f"**Total Amount:** ₹{total}")
 
                     st.write("---")
                     st.markdown("### 📦 Items Purchased")
 
-                    # Table Header
+                    items = order.get("items", [])
+
                     col1, col2, col3, col4 = st.columns([4, 2, 2, 2])
                     col1.write("**Product**")
                     col2.write("**Price**")
                     col3.write("**Qty**")
                     col4.write("**Subtotal**")
 
-                    # Line Items
-                    for item in order["items"]:
+                    for item in items:
                         col1, col2, col3, col4 = st.columns([4, 2, 2, 2])
-                        col1.write(item["name"])
-                        col2.write(f"₹{item['price']}")
-                        col3.write(item["qty"])
-                        col4.write(f"₹{item['price'] * item['qty']}")
+                        col1.write(item.get("name", "N/A"))
+                        col2.write(f"₹{item.get('price', 0)}")
+                        col3.write(item.get("qty", 1))
+                        col4.write(f"₹{item.get('price', 0) * item.get('qty', 1)}")
 
                     st.write("---")
-                    st.markdown(f"### 🧮 Grand Total: **₹{order['total']}**")
+                    st.markdown(f"### 🧮 Grand Total: **₹{total}**")
 
                     st.write("---")
 
-                    # INVOICE PDF BUTTON
-                    if st.button(f"Download Invoice PDF for {order['order_id']}", key=f"pdf_{order['order_id']}"):
+                    # PDF DOWNLOAD BUTTON
+                    if st.button(f"Download Invoice PDF for {order_id}", key=f"pdf_{order_id}"):
+
                         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
                         c = canvas.Canvas(temp_file.name, pagesize=letter)
 
-                        # Title
                         c.setFont("Helvetica-Bold", 20)
                         c.drawString(50, 750, "Invoice")
 
                         c.setFont("Helvetica", 12)
-                        c.drawString(50, 720, f"Order ID: {order['order_id']}")
-                        c.drawString(50, 700, f"Username: {order['username']}")
-                        c.drawString(50, 680, f"Date: {order['timestamp']}")
+                        c.drawString(50, 720, f"Order ID: {order_id}")
+                        c.drawString(50, 700, f"Username: {username}")
+                        c.drawString(50, 680, f"Date: {order.get('timestamp', 'Not recorded')}")
 
                         c.drawString(50, 650, "Items:")
 
                         y = 630
-                        for item in order["items"]:
-                            c.drawString(60, y, f"{item['name']} (x{item['qty']}) — ₹{item['price'] * item['qty']}")
+                        for item in items:
+                            name = item.get("name", "N/A")
+                            price = item.get("price", 0)
+                            qty = item.get("qty", 1)
+                            c.drawString(60, y, f"{name} (x{qty}) — ₹{price * qty}")
                             y -= 20
 
-                        c.drawString(50, y - 20, f"Total: ₹{order['total']}")
+                        c.drawString(50, y - 20, f"Total: ₹{total}")
                         c.save()
 
                         with open(temp_file.name, "rb") as f:
                             st.download_button(
                                 label="📄 Download Invoice",
                                 data=f,
-                                file_name=f"Invoice_{order['order_id']}.pdf",
+                                file_name=f"Invoice_{order_id}.pdf",
                                 mime="application/pdf"
                             )
-
 
 # ---------------------------------------------------------
 # USER DASHBOARD
@@ -154,8 +161,8 @@ def user_dashboard(username):
     # -----------------------------------------------------
     with tab1:
         st.subheader("Available Products")
-
         products = list(products_col.find({}, {"_id": 0}))
+
         if not products:
             st.info("No products available.")
         else:
@@ -171,7 +178,7 @@ def user_dashboard(username):
                         st.success(f"Added {p['name']}!")
 
     # -----------------------------------------------------
-    # CART TAB (FULLY EDITABLE)
+    # CART TAB
     # -----------------------------------------------------
     with tab2:
         st.subheader("🧺 Your Cart")
@@ -192,7 +199,7 @@ def user_dashboard(username):
                 col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 3, 2])
 
                 with col1:
-                    st.write(f"{item['name']}")
+                    st.write(item["name"])
 
                 with col2:
                     st.write(f"₹{item['price']}")
@@ -219,7 +226,7 @@ def user_dashboard(username):
             st.session_state.cart = updated_cart
 
             total = sum(p["price"] * p["qty"] for p in st.session_state.cart)
-            st.markdown(f"### 💰 Total: ₹{total}")
+            st.write(f"### 💰 Total: ₹{total}")
 
             if st.button("🧹 Clear Cart"):
                 st.session_state.cart = []
@@ -243,7 +250,7 @@ def user_dashboard(username):
             for p in st.session_state.cart:
                 st.write(f"- {p['name']} × {p['qty']} — ₹{p['price'] * p['qty']}")
 
-            st.markdown(f"### 💵 Total: ₹{total}")
+            st.write(f"### 💵 Total: ₹{total}")
 
             if st.button("Place Order"):
 
@@ -261,9 +268,8 @@ def user_dashboard(username):
         else:
             st.info("Your cart is empty.")
 
-
 # ---------------------------------------------------------
-# MAIN APP LOGIC
+# MAIN APP
 # ---------------------------------------------------------
 def main():
     st.set_page_config(page_title="Online Store", page_icon="🛍️", layout="centered")
@@ -281,14 +287,12 @@ def main():
     if st.session_state.logged_in:
         if st.sidebar.button("🚪 Logout"):
             st.session_state.logged_in = False
-            st.session_state.role = None
             st.session_state.page = "home"
+            st.session_state.role = None
             st.session_state.username = ""
             st.rerun()
 
-    # -------------------------------
     # HOME PAGE
-    # -------------------------------
     if st.session_state.page == "home":
         st.title("🏬 Online Store")
         col1, col2 = st.columns(2)
@@ -303,9 +307,7 @@ def main():
                 st.session_state.page = "user_login"
                 st.rerun()
 
-    # -------------------------------
     # ADMIN LOGIN
-    # -------------------------------
     elif st.session_state.page == "admin_login":
         st.title("👨‍💼 Admin Login")
 
@@ -321,9 +323,7 @@ def main():
             else:
                 st.error("Invalid admin credentials!")
 
-    # -------------------------------
     # USER LOGIN
-    # -------------------------------
     elif st.session_state.page == "user_login":
         st.title("🧑‍💻 User Login")
 
@@ -342,15 +342,12 @@ def main():
             else:
                 st.error("Invalid user credentials!")
 
-    # -------------------------------
     # DASHBOARD ROUTER
-    # -------------------------------
     elif st.session_state.logged_in and st.session_state.page == "dashboard":
         if st.session_state.role == "admin":
             admin_dashboard()
         else:
             user_dashboard(st.session_state.username)
-
 
 if __name__ == "__main__":
     main()
