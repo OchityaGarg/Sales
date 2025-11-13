@@ -19,6 +19,13 @@ def hash_password(password):
 ADMIN_USER = st.secrets["admin"]["username"]
 ADMIN_PASS = st.secrets["admin"]["password"]
 
+# --- Safe rerun helper ---
+def safe_rerun():
+    try:
+        st.rerun()  # Streamlit ≥ 1.40
+    except AttributeError:
+        st.experimental_rerun()  # older versions
+
 # --- Authentication ---
 def login(username, password):
     if username == ADMIN_USER and password == ADMIN_PASS:
@@ -119,7 +126,7 @@ def main():
             st.session_state.role = None
             st.session_state.username = ""
             st.success("You have been logged out!")
-            st.experimental_rerun()
+            safe_rerun()
 
     # Login / Dashboard
     if not st.session_state.logged_in:
@@ -132,7 +139,7 @@ def main():
                 st.session_state.logged_in = True
                 st.session_state.role = role
                 st.session_state.username = username
-                st.experimental_rerun()
+                safe_rerun()
             else:
                 st.error("Invalid credentials!")
     else:
